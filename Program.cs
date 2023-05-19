@@ -72,7 +72,34 @@ namespace CDCVaccinePriceScraper
         /// <param name="site"></param>
         static void ScrapeSite(VaxSite site)
         {
+            HtmlDocument doc = GetDocument(site.url);
+            foreach (HtmlNode node in doc.DocumentNode.SelectNodes("//table"))
+            {
+                //extract table data
+                List<List<string>> table = node
+                .Descendants("tr")
+                .Skip(1)
+                .Where(tr => tr.Elements("th").Count() > 1)
+                .Select(tr => tr.Elements("th").Select(th => th.InnerText.Trim()).ToList())
+                .ToList();
+                List<List<string>> table2 = node
+               .Descendants("tr")
+               .Skip(1)
+               .Where(tr => tr.Elements("td").Count() > 1)
+               .Select(tr => tr.Elements("td").Select(td => td.InnerText.Trim()).ToList())
+               .ToList();
 
+
+                //merge the data
+                Table t = MergeData(table, table2, node.InnerText);
+                //add it to the VaxSite Object
+
+            }
+        }
+
+        static Table MergeData(List<List<string>> dat1, List<List<string>> dat2, string unrefinedTitle) 
+        {
+            return new Table();
         }
 
 
@@ -187,7 +214,7 @@ namespace CDCVaccinePriceScraper
             u = u.Replace("<a href=\"", "");
             u = u.Replace(d, "");
             u = u.Replace("\"></a>", "");
-            url = "cdc.gov"+u;
+            url = "https://www.cdc.gov" + u;
             tables = new();
         }
     }
