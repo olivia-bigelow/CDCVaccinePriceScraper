@@ -19,6 +19,7 @@ namespace CDCVaccinePriceScraper
             List<VaxSite> list = getUrls("https://www.cdc.gov/vaccines/programs/vfc/awardees/vaccine-management/price-list/archive.html");
             foreach (VaxSite site in list)
             {
+                if(site.date.Last().Equals('6'))
                 ScrapeSite(site);
             }
             //write data to appropriate excel files
@@ -64,6 +65,12 @@ namespace CDCVaccinePriceScraper
             return ret;
         }
 
+
+
+        //TO DO!!!!!
+        //!!!!!!
+        //!!!! FIX THIS METHOD, PROPERLY EXTRACT TITLE AND HEADERS FROM THE TABLE
+
         /// <summary>
         /// this method takes a vaxsite object, and scrapes the tables inside it. 
         /// This method does not return anything, but rather, populates the tables field inside the 
@@ -75,31 +82,142 @@ namespace CDCVaccinePriceScraper
             HtmlDocument doc = GetDocument(site.url);
             foreach (HtmlNode node in doc.DocumentNode.SelectNodes("//table"))
             {
+
+
+
                 //extract table data
                 List<List<string>> table = node
                 .Descendants("tr")
-                .Skip(1)
+                .Skip(0)
                 .Where(tr => tr.Elements("th").Count() > 1)
                 .Select(tr => tr.Elements("th").Select(th => th.InnerText.Trim()).ToList())
                 .ToList();
                 List<List<string>> table2 = node
                .Descendants("tr")
-               .Skip(1)
+               .Skip(0)
                .Where(tr => tr.Elements("td").Count() > 1)
                .Select(tr => tr.Elements("td").Select(td => td.InnerText.Trim()).ToList())
                .ToList();
 
 
                 //merge the data
-                Table t = MergeData(table, table2, node.InnerText);
+                Table t = MergeData(table, table2, refineTitle(node.InnerText));
+
                 //add it to the VaxSite Object
 
             }
         }
 
-        static Table MergeData(List<List<string>> dat1, List<List<string>> dat2, string unrefinedTitle) 
+        static Table MergeData(List<List<string>> dat1, List<List<string>> dat2, string Title) 
         {
-            return new Table();
+            //build the table
+            Table ret = new();
+            //set title
+            ret.Title = Title;
+            //get the header
+            ret.headers = dat1[0];
+            //get flags for building the vaccine listing
+            bool[] flags = headerFlags(ret);
+
+            //populate data
+            int dat1index = 1;
+            int dat2maxlen = dat2[0].Count;
+            foreach(List<string> data2 in dat2) 
+            {
+                //build a vaccine
+                VaccineListing temp = new();
+
+                //clean any data
+                cleanData(data2);
+                //determine how much data is being worked with
+                if(data2.Count< dat2maxlen)
+                {
+
+                }
+                else
+                {
+
+                }
+                    
+            }
+
+
+
+
+            return ret;
+        }
+
+
+        static bool[] headerFlags(Table t )
+        {
+            bool[] ret = new bool[9];
+            for(int i = 0; i < 9; i++)
+            {
+                ret[i] = false;
+            }
+            foreach(string s in t.headers)
+            {
+                if (s.StartsWith("Vaccine"))
+                {
+                    ret[0] = true;
+                    continue;
+                }
+                if (s.StartsWith("Brand"))
+                {
+                    ret[1] = true;
+                    continue;
+                }
+                if (s.StartsWith("NDC"))
+                {
+                    ret[2] = true;
+                    continue;
+                }
+                if (s.StartsWith("Packag"))
+                {
+                    ret[3] = true;
+                    continue;
+                }
+                if (s.StartsWith("CDC"))
+                {
+                    ret[4] = true;
+                    continue;
+                }
+                if (s.StartsWith("Private"))
+                {
+                    ret[5] = true;
+                    continue;
+                }
+                if (s.StartsWith("Contract End"))
+                {
+                    ret[6] = true;
+                    continue;
+                }
+                if (s.StartsWith("Manuf"))
+                {
+                    ret[7] = true;
+                    continue;
+                }
+                if (s.StartsWith("Contract N"))
+                {
+                    ret[8] = true;
+                    continue;
+                }
+            }
+            return ret;
+
+        }
+
+        private static string refineTitle(string s)
+        {
+            //remove the \n from the beginning of the title
+            s = s.Remove(0, 1);
+
+            //remove "price list" and "/" from the title
+            int indToRemove = s.IndexOf("Price List");
+            s = s.Remove(indToRemove);
+            string title = s.Replace("/", " ");
+            return title;
+
         }
 
 
@@ -154,6 +272,41 @@ namespace CDCVaccinePriceScraper
             return doc;
         }
 
+        //FIX THIS NOT COMPREHENSIVE FOR ALL DATASETS
+        static string removeFootNote(string s)
+        {
+            s = s.Replace("[1]", "");
+            s = s.Replace("[2]", "");
+            s = s.Replace("[3]", "");
+            s = s.Replace("[4]", "");
+            s = s.Replace("[5]", "");
+            s = s.Replace("[6]", "");
+            s = s.Replace("[7]", "");
+            return s;
+        }
+
+        static string removeRegandTrademark(string s)
+        {
+            s = s.Replace("&trade;", "");
+            s = s.Replace("&reg;", "");
+            return s;
+        }
+
+        static string fixDash(string s)
+        {
+            s = s.Replace("&ndash;", "-");
+            return s;
+        }
+
+        static void cleanData(List<string> data)
+        {
+            for(int i = 0; i < data.Count; i++)
+            {
+                data[i] = removeFootNote(data[i]);
+                data[i] = removeRegandTrademark(data[i]);
+                data[i] = fixDash(data[i]);
+            }
+        }
     }
 
 
