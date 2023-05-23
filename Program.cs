@@ -10,7 +10,6 @@ namespace CDCVaccinePriceScraper
 {
     //NOTES ON WHAT DO FINISH
     // 1. finish build vaxes to take extracted data into vaccine objects
-    //2. find a way to increase the dat1index inside merge data
     // 3. finish the merge data method
     //4. fix the remove footnotes data to addequately clean all data sets
     //5. build method to write data to excel files, this could be done inside the site object. 
@@ -135,7 +134,7 @@ namespace CDCVaccinePriceScraper
                     cleanData(data2);
                     List<VaccineListing> temp;
                     //build a vaccine
-                    temp = buildvaxxes(flags, data2, dat1[dat1index]);        //THIS SECTION IS NOT WORKING!!! FIX THIS SHIT BRUH
+                    temp = buildvaxxes(flags, data2, dat1[dat1index]);        
                     dat1index++;
                     foreach(VaccineListing v in temp)
                         ret.Vaxxes.Add(v);
@@ -205,7 +204,7 @@ namespace CDCVaccinePriceScraper
         }
 
 
-
+        //FIX THIS FIX THIS FIX THIS
         /// <summary>
         /// this method takes data and returns a list of vaccine listing objects from the parsed data
         /// </summary>
@@ -225,14 +224,77 @@ namespace CDCVaccinePriceScraper
             for(int i = 0; i<5; i++)
                 if (flags[i])
                     cdcCostIndex++;
-
             //split the cdc costs by new lines to determine how many vaccine need to be made. 
             string[] costs = data[cdcCostIndex].Split("\n");
-            //then split the rest of the data by new lines, checking to see that there are the right amounts
+            //determine if splitting is needed.
+            if(costs.Length > 1) 
+            {
+                //split it
+                string[][] data2 = new string[data.Count][];
+                for(int i= 0; i<data.Count; i++)
+                {
+                    string[] toInsert = new string[costs.Length];
+                    string[] temp = data[i].Split("\n");
+                    //3 possible cases, 1 entry, cost.length entries, or more than cost.length entries
+                    if (temp.Length == 1)
+                        for (int j = 0; j < costs.Length; j++)
+                            toInsert[j] = data[i];
+                    else if (temp.Length == costs.Length)
+                        toInsert = temp;
+                    else
+                    {
+                        string tempstr = "";
+                        int k = 0;
+                        int ind = 0;
+                        foreach(string str in temp)
+                        {
+                            //int.TryParse(str.Substring(str.Length - 1), out k)
+                            if (!str.Substring(str.Length - 1).Equals("s"))
+                            {
+                                tempstr += (str + " ");
+                            }
+                            else
+                            {
+                                tempstr += str;
+                                toInsert[ind] = tempstr;
+                                ind++;
+                                tempstr = "";
+                            }
 
-            //build the vaccines
+                        }
+                    }
+                    data2[i] = toInsert;
+                }
+                //build vaccines from each row of the array
+                for(int i = 0; i<costs.Length; i++)
+                {
+                    VaccineListing vax = new();
+                    int ind = 0;
+                    for(int j = 0; j<flags.Length; j++)
+                        if (flags[j])
+                        {
+                            vax.addParam(j, data2[ind][i]);
+                            ind++;
+                        }
+                    ret.Add(vax);
+                }
 
 
+            }
+            else
+            {
+                //build a single vaccine and add it to the list
+                VaccineListing vax = new();
+                int ind = 0;
+                for (int j = 0; j < flags.Length; j++)
+                    if (flags[j])
+                    {
+                        vax.addParam(j, data[ind]);
+                        ind++;
+                    }
+                ret.Add(vax);
+
+            }
             return ret;
         }
 
