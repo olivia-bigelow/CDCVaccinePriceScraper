@@ -3,9 +3,18 @@ using HtmlAgilityPack;
 using IronXL;
 using System;
 using System.Collections.Generic;
+using System.Reflection;
+using System.Numerics;
 
 namespace CDCVaccinePriceScraper
 {
+    //NOTES ON WHAT DO FINISH
+    // 1. finish build vaxes to take extracted data into vaccine objects
+    //2. find a way to increase the dat1index inside merge data
+    // 3. finish the merge data method
+    //4. fix the remove footnotes data to addequately clean all data sets
+    //5. build method to write data to excel files, this could be done inside the site object. 
+
     /// <summary>
     /// this program is used to scracpe the cdc website for vaccine prices 
     /// https://www.cdc.gov/vaccines/programs/vfc/awardees/vaccine-management/price-list/archive.html
@@ -19,7 +28,6 @@ namespace CDCVaccinePriceScraper
             List<VaxSite> list = getUrls("https://www.cdc.gov/vaccines/programs/vfc/awardees/vaccine-management/price-list/archive.html");
             foreach (VaxSite site in list)
             {
-                if(site.date.Last().Equals('6'))
                 ScrapeSite(site);
             }
             //write data to appropriate excel files
@@ -67,10 +75,6 @@ namespace CDCVaccinePriceScraper
 
 
 
-        //TO DO!!!!!
-        //!!!!!!
-        //!!!! FIX THIS METHOD, PROPERLY EXTRACT TITLE AND HEADERS FROM THE TABLE
-
         /// <summary>
         /// this method takes a vaxsite object, and scrapes the tables inside it. 
         /// This method does not return anything, but rather, populates the tables field inside the 
@@ -83,13 +87,11 @@ namespace CDCVaccinePriceScraper
             foreach (HtmlNode node in doc.DocumentNode.SelectNodes("//table"))
             {
 
-
-
                 //extract table data
                 List<List<string>> table = node
                 .Descendants("tr")
                 .Skip(0)
-                .Where(tr => tr.Elements("th").Count() > 1)
+                .Where(tr => tr.Elements("th").Count() > 0)
                 .Select(tr => tr.Elements("th").Select(th => th.InnerText.Trim()).ToList())
                 .ToList();
                 List<List<string>> table2 = node
@@ -101,14 +103,15 @@ namespace CDCVaccinePriceScraper
 
 
                 //merge the data
-                Table t = MergeData(table, table2, refineTitle(node.InnerText));
+                Table t = MergeData(table, table2, refineTitle(node.InnerText), site.date);
 
                 //add it to the VaxSite Object
+                site.tables.Add(t);
 
             }
         }
 
-        static Table MergeData(List<List<string>> dat1, List<List<string>> dat2, string Title) 
+        static Table MergeData(List<List<string>> dat1, List<List<string>> dat2, string Title, string date) 
         {
             //build the table
             Table ret = new();
@@ -118,35 +121,120 @@ namespace CDCVaccinePriceScraper
             ret.headers = dat1[0];
             //get flags for building the vaccine listing
             bool[] flags = headerFlags(ret);
-
             //populate data
             int dat1index = 1;
-            int dat2maxlen = dat2[0].Count;
-            foreach(List<string> data2 in dat2) 
+            VaccineListing prev = null;
+            foreach(List<string> dat in dat1) 
+                cleanData(dat);
+            //if its between 2010 and 2002, you need to build a list of vaccines, otherwise, build a single vaccine
+            int year = int.Parse(date.Substring(date.Length - 2));
+            if (year < 11 && year > 1) 
+                foreach (List<string> data2 in dat2) 
+                {
+                    //clean any data
+                    cleanData(data2);
+                    List<VaccineListing> temp;
+                    //build a vaccine
+                    temp = buildvaxxes(flags, data2, dat1[dat1index]);        //THIS SECTION IS NOT WORKING!!! FIX THIS SHIT BRUH
+                    dat1index++;
+                    foreach(VaccineListing v in temp)
+                        ret.Vaxxes.Add(v);
+                }
+            else
             {
-                //build a vaccine
-                VaccineListing temp = new();
-
-                //clean any data
-                cleanData(data2);
-                //determine how much data is being worked with
-                if(data2.Count< dat2maxlen)
+                //BUIILD A SINGLE VACCINE LISTING
+                foreach (List<string> data2 in dat2)
                 {
+                    cleanData(data2);
+                    VaccineListing temp;
+                    bool tick = buildvax(flags, data2, prev, dat1[dat1index], out temp);
+                    if(tick)
+                        dat1index++;
+                    ret.Vaxxes.Add(temp);
+                    prev = temp;
 
                 }
-                else
-                {
-
-                }
-                    
             }
+            return ret;
+        }
 
 
+        /// <summary>
+        /// this method will build a vaccine given the input parameters
+        /// </summary>
+        /// <param name="flags"></param> an array of boolean flags determining what fields need to be populated
+        /// <param name="data2"></param> a list of tr elements
+        /// <param name="prev"></param> another vaccine listing to fill out missing data
+        /// <param name="data1"></param> a list of th elements
+        /// <param name="vax"></param> the vaccinelisting object built by this method
+        /// <returns></returns> true if the previous vaccine listing is not used in construction, false otherwise
+        static bool buildvax(bool[]flags, List<string> data2, VaccineListing prev, List<string> data1, out VaccineListing vax)
+        {
+            //determine if prev is necessary
+            int boolcount = 0;
+            foreach (bool b in flags)
+                if (b)
+                    boolcount++;
+            bool needPrev = false;
+            if (boolcount != data1.Count + data2.Count)
+                needPrev = true;
+
+            //initialize the vaccinelisting
+            vax = new();
+
+            //append the data
+            List<string>data = data1.Concat(data2).ToList();
+            if(needPrev)
+            {
+                data.Insert(0, prev.Vaccine);
+                data.Insert(1, prev.BrandName); 
+                data.Add(prev.ContractEnd);
+                data.Add(prev.Manufacturer);
+                data.Add(prev.ContractNumber);
+            }
+            int datind = 0;
+
+            //iterate through the flags, adding neccessary fields
+            for(int i = 0; i < flags.Count(); i++)
+                if (flags[i])
+                {
+                    vax.addParam(i, data[datind]);
+                    datind++;
+                }
+            return needPrev;
+        }
+
+
+
+        /// <summary>
+        /// this method takes data and returns a list of vaccine listing objects from the parsed data
+        /// </summary>
+        /// <param name="flags"></param> an array of bools determining which fields are used in the vaccines
+        /// <param name="data"></param> a list of td elements
+        /// <param name="heads"></param> a list of th elements
+        /// <returns></returns>
+        public static List<VaccineListing> buildvaxxes(bool[] flags, List<string> tds, List<string> heads)
+        {
+            //initialize return
+            List<VaccineListing> ret = new();
+
+            //merge the data
+            List<string> data = heads.Concat(tds).ToList();
+            //find the index of cdc cost
+            int cdcCostIndex = 0;
+            for(int i = 0; i<5; i++)
+                if (flags[i])
+                    cdcCostIndex++;
+
+            //split the cdc costs by new lines to determine how many vaccine need to be made. 
+            string[] costs = data[cdcCostIndex].Split("\n");
+            //then split the rest of the data by new lines, checking to see that there are the right amounts
+
+            //build the vaccines
 
 
             return ret;
         }
-
 
         static bool[] headerFlags(Table t )
         {
@@ -336,6 +424,55 @@ namespace CDCVaccinePriceScraper
             ContractEnd = string.Empty;
             Manufacturer = string.Empty;
             ContractNumber = string.Empty;
+        }
+
+
+        /// <summary>
+        /// adds this given parameter to the vaccine listing given the index of the following mapping
+        /// 0 -> vaccine, 1-> brandname, 2-> NDC, 3-> packaging, 4-> cdccost, 5-> private sector cost, 6-> contract end
+        /// 7-> manufacturer, 8-> contract number
+        /// </summary>
+        /// <param name="index"></param>
+        /// <param name="value"></param>
+        public void addParam(int index, string value)
+        {
+            if (index < 4)
+            {
+                if (index < 2)
+                {
+                    if (index == 0)
+                        this.Vaccine = value;
+                    else
+                        this.BrandName = value;
+                }
+                else
+                {
+                    if (index == 3)
+                        this.Packaging = value;
+                    else
+                        this.NDC = value;
+                }
+            }
+            else
+            {
+                if (index < 7)
+                {
+                    if (index < 6)
+                        if (index == 5)
+                            this.PrivateSectorCost = value;
+                        else
+                            this.CdcCost = value;
+                    else
+                        this.ContractEnd = value;
+                }
+                else
+                {
+                    if (index == 7)
+                        this.Manufacturer = value;
+                    else
+                        this.ContractNumber = value;
+                }
+            }
         }
     }
 
