@@ -9,8 +9,6 @@ using System.Numerics;
 namespace CDCVaccinePriceScraper
 {
     //NOTES ON WHAT DO FINISH
-    // 1. finish build vaxes to take extracted data into vaccine objects
-    // 3. finish the merge data method
     //4. fix the remove footnotes data to addequately clean all data sets
     //5. build method to write data to excel files, this could be done inside the site object. 
 
@@ -28,51 +26,20 @@ namespace CDCVaccinePriceScraper
             foreach (VaxSite site in list)
             {
                 ScrapeSite(site);
+                Console.WriteLine(site.date);
+                foreach(Table t in site.tables)
+                {
+                    Console.WriteLine(t.Vaxxes[0].Vaccine + " " + t.Vaxxes[0].BrandName + " " + t.Vaxxes[0].NDC + " " + t.Vaxxes[0].Packaging + " " + t.Vaxxes[0].CdcCost + " " + t.Vaxxes[0].PrivateSectorCost + " " + t.Vaxxes[0].ContractEnd + " " + t.Vaxxes[0].Manufacturer + " " + t.Vaxxes[0].ContractNumber);
+                }
             }
             //write data to appropriate excel files
 
 
             //stub for debugging
+
+
             Console.WriteLine("all done :3");
         }
-        /// <summary>
-        /// THIS METHOD IS NOT CURRENT RUNNING PROPERLY AND NEEDS TO FIXED TO ADEQUATLY SCRAPE DIFFERENLY FORMATTED PAGES
-        /// This method parses the website given by URL and returns a list of lists of lists of strings. 
-        /// this method is highly specialized and is meant to work for the following website
-        /// https://www.cdc.gov/vaccines/programs/vfc/awardees/vaccine-management/price-list/index.html
-        /// The returns is a list containing 2 2d lists, representing the entire table data. The tables of this website are
-        /// split into 2 seperate terms th and td. so the first 2d list stores th and the second stores td
-        /// </summary>
-        /// <param name="url"></param>
-        /// <returns></returns>
-        static List<List<List<string>>> getVaxNames(string url)
-        {
-            HtmlDocument doc = GetDocument(url);
-
-            List<List<List<string>>> ret = new();
-            foreach (HtmlNode node in doc.DocumentNode.SelectNodes("//table"))
-            {
-                List<List<string>> table = node
-                .Descendants("tr")
-                .Skip(1)
-                .Where(tr => tr.Elements("th").Count() > 1)
-                .Select(tr => tr.Elements("th").Select(th => th.InnerText.Trim()).ToList())
-                .ToList();
-                List<List<string>> table2 = node
-               .Descendants("tr")
-               .Skip(1)
-               .Where(tr => tr.Elements("td").Count() > 1)
-               .Select(tr => tr.Elements("td").Select(td => td.InnerText.Trim()).ToList())
-               .ToList();
-
-
-                ret.Add(table);
-                ret.Add(table2);
-            }
-            return ret;
-        }
-
-
 
         /// <summary>
         /// this method takes a vaxsite object, and scrapes the tables inside it. 
@@ -122,23 +89,29 @@ namespace CDCVaccinePriceScraper
             bool[] flags = headerFlags(ret);
             //populate data
             int dat1index = 1;
+            foreach(List<string> d in dat1)
+            {
+                cleanData(d);
+            }
             VaccineListing prev = null;
-            foreach(List<string> dat in dat1) 
-                cleanData(dat);
             //if its between 2010 and 2002, you need to build a list of vaccines, otherwise, build a single vaccine
             int year = int.Parse(date.Substring(date.Length - 2));
-            if (year < 11 && year > 1) 
-                foreach (List<string> data2 in dat2) 
+            if (year < 11 && year > 1)
+            {
+                List<VaccineListing> temp;
+                foreach (List<string> data2 in dat2)
                 {
-                    //clean any data
                     cleanData(data2);
-                    List<VaccineListing> temp;
                     //build a vaccine
-                    temp = buildvaxxes(flags, data2, dat1[dat1index]);        
+                    if (dat1.Count < 2)
+                        temp = buildvaxxes(flags, data2, new List<string>());
+                    else
+                        temp = buildvaxxes(flags, data2, dat1[dat1index]);
                     dat1index++;
-                    foreach(VaccineListing v in temp)
+                    foreach (VaccineListing v in temp)
                         ret.Vaxxes.Add(v);
                 }
+            }
             else
             {
                 //BUIILD A SINGLE VACCINE LISTING
@@ -147,7 +120,7 @@ namespace CDCVaccinePriceScraper
                     cleanData(data2);
                     VaccineListing temp;
                     bool tick = buildvax(flags, data2, prev, dat1[dat1index], out temp);
-                    if(tick)
+                    if (tick)
                         dat1index++;
                     ret.Vaxxes.Add(temp);
                     prev = temp;
@@ -155,6 +128,33 @@ namespace CDCVaccinePriceScraper
                 }
             }
             return ret;
+        }
+
+        static string removeRegandTrademark(string s)
+        {
+            s = s.Replace("&trade;", "");
+            s = s.Replace("&reg;", "");
+            return s;
+        }
+
+        static string fixDash(string s)
+        {
+            s = s.Replace("&ndash;", "-");
+            return s;
+        }
+        static string cleanData(string data)
+        {
+            data = removeRegandTrademark(data);
+            data = fixDash(data);
+            return data;
+        }
+
+        static void cleanData(List<string> data)
+        {
+            for(int i = 0; i < data.Count; i++)
+            {
+                data[i] = cleanData(data[i]);
+            }
         }
 
 
@@ -202,7 +202,24 @@ namespace CDCVaccinePriceScraper
                 }
             return needPrev;
         }
-
+        static string removeFootNote(string s)
+        {
+            s = s.Replace("[1]", "");
+            s = s.Replace("[2]", "");
+            s = s.Replace("[3]", "");
+            s = s.Replace("[4]", "");
+            s = s.Replace("[5]", "");
+            s = s.Replace("[6]", "");
+            s = s.Replace("[7]", "");
+            s = s.Replace("[5, 6]", "");
+            s = s.Replace("/", "");
+            s = s.Replace("&curren;", "");
+            s = s.Replace("&bull;", "");
+            s = s.Replace("-Hib", "");
+            s = s.Replace("#", "");
+            s = s.Replace("\n", "");
+            return s;
+        }
 
         //FIX THIS FIX THIS FIX THIS
         /// <summary>
@@ -219,6 +236,7 @@ namespace CDCVaccinePriceScraper
 
             //merge the data
             List<string> data = heads.Concat(tds).ToList();
+            data[0] = removeFootNote(data[0]);
             //find the index of cdc cost
             int cdcCostIndex = 0;
             for(int i = 0; i<5; i++)
@@ -235,6 +253,11 @@ namespace CDCVaccinePriceScraper
                 {
                     string[] toInsert = new string[costs.Length];
                     string[] temp = data[i].Split("\n");
+                    for(int j = 0; j<temp.Length; j++)
+                    {
+                        if (temp[j] == null)
+                            temp[j] = temp[j-1];
+                    }
                     //3 possible cases, 1 entry, cost.length entries, or more than cost.length entries
                     if (temp.Length == 1)
                         for (int j = 0; j < costs.Length; j++)
@@ -422,41 +445,6 @@ namespace CDCVaccinePriceScraper
             return doc;
         }
 
-        //FIX THIS NOT COMPREHENSIVE FOR ALL DATASETS
-        static string removeFootNote(string s)
-        {
-            s = s.Replace("[1]", "");
-            s = s.Replace("[2]", "");
-            s = s.Replace("[3]", "");
-            s = s.Replace("[4]", "");
-            s = s.Replace("[5]", "");
-            s = s.Replace("[6]", "");
-            s = s.Replace("[7]", "");
-            return s;
-        }
-
-        static string removeRegandTrademark(string s)
-        {
-            s = s.Replace("&trade;", "");
-            s = s.Replace("&reg;", "");
-            return s;
-        }
-
-        static string fixDash(string s)
-        {
-            s = s.Replace("&ndash;", "-");
-            return s;
-        }
-
-        static void cleanData(List<string> data)
-        {
-            for(int i = 0; i < data.Count; i++)
-            {
-                data[i] = removeFootNote(data[i]);
-                data[i] = removeRegandTrademark(data[i]);
-                data[i] = fixDash(data[i]);
-            }
-        }
     }
 
 
@@ -488,7 +476,6 @@ namespace CDCVaccinePriceScraper
             ContractNumber = string.Empty;
         }
 
-
         /// <summary>
         /// adds this given parameter to the vaccine listing given the index of the following mapping
         /// 0 -> vaccine, 1-> brandname, 2-> NDC, 3-> packaging, 4-> cdccost, 5-> private sector cost, 6-> contract end
@@ -503,7 +490,9 @@ namespace CDCVaccinePriceScraper
                 if (index < 2)
                 {
                     if (index == 0)
+                    {
                         this.Vaccine = value;
+                    }
                     else
                         this.BrandName = value;
                 }
@@ -536,6 +525,7 @@ namespace CDCVaccinePriceScraper
                 }
             }
         }
+
     }
 
     /// <summary>
