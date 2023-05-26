@@ -9,8 +9,11 @@ using System.Numerics;
 namespace CDCVaccinePriceScraper
 {
     //NOTES ON WHAT DO FINISH
-    //4. fix the remove footnotes data to addequately clean all data sets
-    //5. build method to write data to excel files, this could be done inside the site object. 
+    //write data to excel files
+    //check cleaning on data
+
+
+    //april 1st 2013 missing data to be resolved manually
 
     /// <summary>
     /// this program is used to scracpe the cdc website for vaccine prices 
@@ -25,21 +28,70 @@ namespace CDCVaccinePriceScraper
             List<VaxSite> list = getUrls("https://www.cdc.gov/vaccines/programs/vfc/awardees/vaccine-management/price-list/archive.html");
             foreach (VaxSite site in list)
             {
-                ScrapeSite(site);
-                Console.WriteLine(site.date);
-                foreach(Table t in site.tables)
-                {
-                    Console.WriteLine(t.Vaxxes[0].Vaccine + " " + t.Vaxxes[0].BrandName + " " + t.Vaxxes[0].NDC + " " + t.Vaxxes[0].Packaging + " " + t.Vaxxes[0].CdcCost + " " + t.Vaxxes[0].PrivateSectorCost + " " + t.Vaxxes[0].ContractEnd + " " + t.Vaxxes[0].Manufacturer + " " + t.Vaxxes[0].ContractNumber);
-                }
+                //if (site.date.Substring(site.date.Length - 2).Equals("03"))
+                //{
+                    ScrapeSite(site);
+                    //write data to appropriate excel files
+                    generateExcelFile(site);
+                //}
             }
-            //write data to appropriate excel files
-
-
-            //stub for debugging
-
-
+            
             Console.WriteLine("all done :3");
         }
+
+
+
+        static void generateExcelFile(VaxSite site)
+        {
+            //setup file
+            WorkBook workBook = WorkBook.Create(ExcelFileFormat.XLSX);
+            workBook.Metadata.Title = site.url;
+
+            foreach(Table t in site.tables)
+            {
+                WorkSheet workSheet;
+                try
+                {
+                    workSheet = workBook.CreateWorkSheet(t.Title);
+                }
+                catch
+                {
+                    //influenza wasn't added properly in the table captions of may 1st 2015
+                    string[] temp = t.Title.Split(" ");
+                    string title = temp[0] + " influenza " + temp[1];
+                    workSheet = workBook.CreateWorkSheet(title);
+                }
+                //add headers
+                workSheet["A" +1].Value = "Vaccine";
+                workSheet["B" + 1].Value = "BrandName";
+                workSheet["C" + 1].Value = "NDC";
+                workSheet["D"+ 1].Value = "Packaging";
+                workSheet["E" + 1].Value = "CdcCost";
+                workSheet["F" + 1].Value = "Private Sector Cost";
+                workSheet["G" + 1].Value = "Contract End";
+                workSheet["H" + 1].Value = "Manufacturer";
+                workSheet["I" +  1].Value = "Contract Number";
+                for (int i = 0; i < t.Vaxxes.Count; i++)
+                {
+                    workSheet["A" + (i + 2)].Value = t.Vaxxes[i].Vaccine;
+                    workSheet["B" + (i + 2)].Value = t.Vaxxes[i].BrandName;
+                    workSheet["C" + (i + 2)].Value = t.Vaxxes[i].NDC;
+                    workSheet["D" + (i + 2)].Value = t.Vaxxes[i].Packaging;
+                    workSheet["E" + (i + 2)].Value = t.Vaxxes[i].CdcCost;
+                    workSheet["F" + (i + 2)].Value = t.Vaxxes[i].PrivateSectorCost;
+                    workSheet["G" + (i + 2)].Value = t.Vaxxes[i].ContractEnd;
+                    workSheet["H" + (i + 2)].Value = t.Vaxxes[i].Manufacturer;
+                    workSheet["I" + (i + 2)].Value = t.Vaxxes[i].ContractNumber;
+                }
+                    
+            }
+            //format the data properly
+            string date = site.date;
+            date = date.Replace("/", "_");
+            //write to file
+            workBook.SaveAs($@"M:\divin\ReposHard\CDCVaccinePriceScraper\Files\Vaccine_"+date+".xlsx");
+        }
+
 
         /// <summary>
         /// this method takes a vaxsite object, and scrapes the tables inside it. 
@@ -120,7 +172,7 @@ namespace CDCVaccinePriceScraper
                     cleanData(data2);
                     VaccineListing temp;
                     bool tick = buildvax(flags, data2, prev, dat1[dat1index], out temp);
-                    if (tick)
+                    //if (tick)
                         dat1index++;
                     ret.Vaxxes.Add(temp);
                     prev = temp;
@@ -140,6 +192,11 @@ namespace CDCVaccinePriceScraper
         static string fixDash(string s)
         {
             s = s.Replace("&ndash;", "-");
+            s = s.Replace("&nbsp;", "");
+            s = s.Replace("&times;", "");
+            s = s.Replace("&ldquo;", "");
+            s = s.Replace("&rdquo;", "");
+            s = s.Replace("&amp;", "");
             return s;
         }
         static string cleanData(string data)
@@ -186,7 +243,8 @@ namespace CDCVaccinePriceScraper
             if(needPrev)
             {
                 data.Insert(0, prev.Vaccine);
-                data.Insert(1, prev.BrandName); 
+                if (int.TryParse(data[1].Substring(0,1), out int res))
+                    data.Insert(1, prev.BrandName); 
                 data.Add(prev.ContractEnd);
                 data.Add(prev.Manufacturer);
                 data.Add(prev.ContractNumber);
@@ -239,11 +297,16 @@ namespace CDCVaccinePriceScraper
             data[0] = removeFootNote(data[0]);
             //find the index of cdc cost
             int cdcCostIndex = 0;
-            for(int i = 0; i<5; i++)
+            for(int i = 0; i<4; i++)
                 if (flags[i])
                     cdcCostIndex++;
             //split the cdc costs by new lines to determine how many vaccine need to be made. 
-            string[] costs = data[cdcCostIndex].Split("\n");
+            string[] costsTemp = data[cdcCostIndex].Split("$");
+            string[]costs = new string[costsTemp.Length-1];
+            for (int i = 1; i < costsTemp.Length; i++)
+            {
+                costs[i-1] = "$" + costsTemp[i].Trim();
+            }
             //determine if splitting is needed.
             if(costs.Length > 1) 
             {
@@ -251,6 +314,11 @@ namespace CDCVaccinePriceScraper
                 string[][] data2 = new string[data.Count][];
                 for(int i= 0; i<data.Count; i++)
                 {
+                    if (data[i].Contains(costs[0]) && data[i].Contains(costs[1]))
+                    {
+                        data2[i] = costs;
+                        continue;
+                    }
                     string[] toInsert = new string[costs.Length];
                     string[] temp = data[i].Split("\n");
                     for(int j = 0; j<temp.Length; j++)
@@ -272,7 +340,7 @@ namespace CDCVaccinePriceScraper
                         foreach(string str in temp)
                         {
                             //int.TryParse(str.Substring(str.Length - 1), out k)
-                            if (!str.Substring(str.Length - 1).Equals("s"))
+                            if (!str.Substring(str.Length - 1).Equals("s") || !str.Substring(str.Length - 1).Equals("l"))
                             {
                                 tempstr += (str + " ");
                             }
@@ -284,6 +352,11 @@ namespace CDCVaccinePriceScraper
                                 tempstr = "";
                             }
 
+                        }
+                        for(int j = 0; j < toInsert.Length;j++)
+                        {
+                            if (toInsert[j] == null)
+                                toInsert[j]= tempstr;
                         }
                     }
                     data2[i] = toInsert;
