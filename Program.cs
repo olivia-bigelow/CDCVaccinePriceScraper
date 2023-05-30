@@ -9,12 +9,14 @@ using System.Numerics;
 namespace CDCVaccinePriceScraper
 {
     //NOTES ON WHAT DO FINISH
-    //write data to excel files
-    //check cleaning on data
+    //check excel files
+    //remove footnotes from titles
+    //remove newlines from all data
 
 
-    //april 1st 2013 missing data to be resolved manually
-
+    //missing data issues
+    // adult tetanus vaccine 04/01/13/ 04/29/13 04/01/14
+    //typo 04/15/2009 in packaging to be resolved mannualy
     /// <summary>
     /// this program is used to scracpe the cdc website for vaccine prices 
     /// https://www.cdc.gov/vaccines/programs/vfc/awardees/vaccine-management/price-list/archive.html
@@ -28,7 +30,7 @@ namespace CDCVaccinePriceScraper
             List<VaxSite> list = getUrls("https://www.cdc.gov/vaccines/programs/vfc/awardees/vaccine-management/price-list/archive.html");
             foreach (VaxSite site in list)
             {
-                //if (site.date.Substring(site.date.Length - 2).Equals("03"))
+                //if (site.date.Substring(site.date.Length - 2).Equals("02"))
                 //{
                     ScrapeSite(site);
                     //write data to appropriate excel files
@@ -186,6 +188,7 @@ namespace CDCVaccinePriceScraper
         {
             s = s.Replace("&trade;", "");
             s = s.Replace("&reg;", "");
+            s = s.Replace("&gt;", "");
             return s;
         }
 
@@ -197,6 +200,7 @@ namespace CDCVaccinePriceScraper
             s = s.Replace("&ldquo;", "");
             s = s.Replace("&rdquo;", "");
             s = s.Replace("&amp;", "");
+            s = s.Replace("&Prime;", "\"");
             return s;
         }
         static string cleanData(string data)
@@ -270,16 +274,15 @@ namespace CDCVaccinePriceScraper
             s = s.Replace("[6]", "");
             s = s.Replace("[7]", "");
             s = s.Replace("[5, 6]", "");
-            s = s.Replace("/", "");
             s = s.Replace("&curren;", "");
             s = s.Replace("&bull;", "");
-            s = s.Replace("-Hib", "");
             s = s.Replace("#", "");
-            s = s.Replace("\n", "");
+            s = s.Replace("\n", " ");
+            s = s.Replace("^", "");
+
             return s;
         }
 
-        //FIX THIS FIX THIS FIX THIS
         /// <summary>
         /// this method takes data and returns a list of vaccine listing objects from the parsed data
         /// </summary>
@@ -300,23 +303,64 @@ namespace CDCVaccinePriceScraper
             for(int i = 0; i<4; i++)
                 if (flags[i])
                     cdcCostIndex++;
-            //split the cdc costs by new lines to determine how many vaccine need to be made. 
+            //split the cdc costs and private sector costs by new lines to determine how many vaccine need to be made. 
             string[] costsTemp = data[cdcCostIndex].Split("$");
             string[]costs = new string[costsTemp.Length-1];
             for (int i = 1; i < costsTemp.Length; i++)
             {
                 costs[i-1] = "$" + costsTemp[i].Trim();
             }
+
+            //split private costs
+            string[] privcostsTemp = data[cdcCostIndex+1].Split("$");
+            string[] privcosts = new string[privcostsTemp.Length - 1];
+            for (int i = 1; i < privcostsTemp.Length; i++)
+            {
+                privcosts[i - 1] = "$" + privcostsTemp[i].Trim();
+            }
+
+            //if they don't have the same size, repopulate the smaller one
+            if(costs.Length != privcosts.Length && !data[cdcCostIndex+1].Contains("to"))
+            {
+                if(privcosts.Length == 1)
+                {
+                    privcostsTemp = new string[costs.Length];
+                    for (int i = 0; i < costs.Length; i++)
+                        privcostsTemp[i] = privcosts[0];
+                    privcosts = privcostsTemp;
+                }
+                else if (costs.Length == 1)
+                {
+                    costsTemp = new string[privcosts.Length];
+                    for (int i = 0; i < privcosts.Length; i++)
+                        costsTemp[i] = costs[0];
+                    costs = costsTemp;
+                }
+                else //private sector is empty
+                {
+                    privcostsTemp = new string[costs.Length];
+                    for (int i = 0; i < costs.Length; i++)
+                        privcostsTemp[i] = "";
+                    privcosts = privcostsTemp;
+                }
+            }    
+
+
             //determine if splitting is needed.
-            if(costs.Length > 1) 
+            if (costs.Length > 1) 
             {
                 //split it
                 string[][] data2 = new string[data.Count][];
                 for(int i= 0; i<data.Count; i++)
                 {
-                    if (data[i].Contains(costs[0]) && data[i].Contains(costs[1]))
+                    if (i == cdcCostIndex)
                     {
                         data2[i] = costs;
+                        continue;
+                    }
+                    if (i == cdcCostIndex+1)
+                    {
+                        data2[i] = privcosts;
                         continue;
                     }
                     string[] toInsert = new string[costs.Length];
@@ -325,6 +369,74 @@ namespace CDCVaccinePriceScraper
                     {
                         if (temp[j] == null)
                             temp[j] = temp[j-1];
+                    }
+                    //this is the packaging and needs to be split very speciffically
+                    if (i == cdcCostIndex - 1)
+                    {
+                        if (temp.Length == costs.Length)
+                        {
+                            for(int j = 0; j<temp.Length; j++)
+                            {
+                                temp[j] = temp[j].Replace("251", "25 x 1");
+                                temp[j] = temp[j].Replace("11", "1x1");
+                            }
+
+                            toInsert = temp;
+                        }
+                        else
+                        {
+                            temp = data[i].Split();
+                            string tempstr = "";
+                            int k = 0;
+                            int ind = 0;
+                            bool tipflag = false;
+                            foreach (string str in temp)
+                            {
+                                if (tipflag)
+                                {
+                                    if (str.Contains("G") || str.Contains("afety") || str.Contains("syringe"))
+                                    {
+                                        tempstr += (str + " ");
+                                        toInsert[ind] = tempstr;
+                                        ind++;
+                                        tempstr = "";
+                                        continue;
+                                    }
+                                    else
+                                    {
+                                        toInsert[ind] = tempstr;
+                                        ind++;
+                                        tempstr = "";
+                                    }
+                                    tipflag = false;
+                                }
+                                if (str.Contains("251"))
+                                    tempstr += "25 x 1";
+                                else if (str.Contains("11"))
+                                    tempstr += "1 x 1";
+                                else
+                                    tempstr += (str + " ");
+                                if (str.Contains("ial") || str.Contains("eedle") || str.Contains("prayer"))
+                                {
+                                    toInsert[ind] = tempstr;
+                                    ind++;
+                                    tempstr = "";
+                                }
+                                {
+                                    if (str.Contains("Tip") || str.Contains("TIP"))
+                                    {
+                                        tipflag = true;
+                                    }
+                                }
+                            }
+                            if (ind < toInsert.Length)
+                                toInsert[ind] = tempstr;
+                            for (int j = 0; j < toInsert.Length; j++)
+                                if (toInsert[j] == null)
+                                    toInsert[j] = temp[j - 1];
+                        }
+                        data2[i] = toInsert;
+                        continue;
                     }
                     //3 possible cases, 1 entry, cost.length entries, or more than cost.length entries
                     if (temp.Length == 1)
@@ -340,7 +452,7 @@ namespace CDCVaccinePriceScraper
                         foreach(string str in temp)
                         {
                             //int.TryParse(str.Substring(str.Length - 1), out k)
-                            if (!str.Substring(str.Length - 1).Equals("s") || !str.Substring(str.Length - 1).Equals("l"))
+                            if (!str.Substring(str.Length - 1).Equals("s"))
                             {
                                 tempstr += (str + " ");
                             }
