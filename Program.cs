@@ -5,17 +5,17 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Numerics;
+using System.Xml.Linq;
 
 namespace CDCVaccinePriceScraper
 {
     //NOTES ON WHAT DO FINISH
-    //check excel files
-    //remove footnotes from titles
-    //remove newlines from all data
+    //check excel files (from july 1st)
+    //remove footnotes from titles all data (see 12/01/16)
 
 
     //missing data issues
-    // adult tetanus vaccine 04/01/13/ 04/29/13 04/01/14
+    // adult tetanus vaccine 04/01/13/ 04/29/13 04/01/14 02/01/12 02/14/13 (2 on 02/18/14)  01/04/12 (2 on 01/13/14) (2 on 07/01/13) 07/06/12 (2 on 07/24/13) (07/31/12) 06/03/14 03/07/13 05/01/14 11/01/12 (2 on 11/18/12) 10/15/12 09/10/12 (2 0n 09/30/12)
     //typo 04/15/2009 in packaging to be resolved mannualy
     /// <summary>
     /// this program is used to scracpe the cdc website for vaccine prices 
@@ -73,17 +73,31 @@ namespace CDCVaccinePriceScraper
                 workSheet["G" + 1].Value = "Contract End";
                 workSheet["H" + 1].Value = "Manufacturer";
                 workSheet["I" +  1].Value = "Contract Number";
+
+                //set a flag to catch the missing brandname from 2012-2014
+                int year = int.Parse(site.date.Substring(site.date.Length - 2));
+                bool twelveToFortFlag = false;
+                if (year < 15 && year > 11) 
+                    twelveToFortFlag = true;
+                
                 for (int i = 0; i < t.Vaxxes.Count; i++)
                 {
-                    workSheet["A" + (i + 2)].Value = t.Vaxxes[i].Vaccine;
-                    workSheet["B" + (i + 2)].Value = t.Vaxxes[i].BrandName;
-                    workSheet["C" + (i + 2)].Value = t.Vaxxes[i].NDC;
-                    workSheet["D" + (i + 2)].Value = t.Vaxxes[i].Packaging;
-                    workSheet["E" + (i + 2)].Value = t.Vaxxes[i].CdcCost;
-                    workSheet["F" + (i + 2)].Value = t.Vaxxes[i].PrivateSectorCost;
-                    workSheet["G" + (i + 2)].Value = t.Vaxxes[i].ContractEnd;
-                    workSheet["H" + (i + 2)].Value = t.Vaxxes[i].Manufacturer;
-                    workSheet["I" + (i + 2)].Value = t.Vaxxes[i].ContractNumber;
+                    workSheet["A" + (i + 2)].Value = removeFootNote(t.Vaxxes[i].Vaccine);
+                    if (twelveToFortFlag && int.TryParse(t.Vaxxes[i].BrandName.Substring(0, 1), out int k) && t.Vaxxes[i].NDC.Length < 1)
+                    {
+                        workSheet["C" + (i + 2)].Value = removeFootNote(t.Vaxxes[i].BrandName);
+                    }
+                    else
+                    {
+                        workSheet["B" + (i + 2)].Value = removeFootNote(t.Vaxxes[i].BrandName);
+                        workSheet["C" + (i + 2)].Value = removeFootNote(t.Vaxxes[i].NDC);
+                    }
+                    workSheet["D" + (i + 2)].Value = removeFootNote(t.Vaxxes[i].Packaging);
+                    workSheet["E" + (i + 2)].Value = removeFootNote(t.Vaxxes[i].CdcCost);
+                    workSheet["F" + (i + 2)].Value = removeFootNote(t.Vaxxes[i].PrivateSectorCost);
+                    workSheet["G" + (i + 2)].Value = removeFootNote(t.Vaxxes[i].ContractEnd);
+                    workSheet["H" + (i + 2)].Value = removeFootNote(t.Vaxxes[i].Manufacturer);
+                    workSheet["I" + (i + 2)].Value = removeFootNote(t.Vaxxes[i].ContractNumber);
                 }
                     
             }
@@ -279,6 +293,7 @@ namespace CDCVaccinePriceScraper
             s = s.Replace("#", "");
             s = s.Replace("\n", " ");
             s = s.Replace("^", "");
+            s = s.Replace("*", "");
 
             return s;
         }
