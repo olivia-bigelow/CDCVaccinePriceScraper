@@ -9,13 +9,8 @@ using System.Xml.Linq;
 
 namespace CDCVaccinePriceScraper
 {
-    //NOTES ON WHAT DO FINISH
-    //check excel files (from july 1st)
-    //remove footnotes from titles all data (see 12/01/16)
 
 
-    //missing data issues
-    // adult tetanus vaccine 04/01/13/ 04/29/13 04/01/14 02/01/12 02/14/13 (2 on 02/18/14)  01/04/12 (2 on 01/13/14) (2 on 07/01/13) 07/06/12 (2 on 07/24/13) (07/31/12) 06/03/14 03/07/13 05/01/14 11/01/12 (2 on 11/18/12) 10/15/12 09/10/12 (2 0n 09/30/12)
     //typo 04/15/2009 in packaging to be resolved mannualy
     /// <summary>
     /// this program is used to scracpe the cdc website for vaccine prices 
